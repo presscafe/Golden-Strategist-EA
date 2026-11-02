@@ -1,0 +1,99 @@
+name: MQL5 compile check
+
+# Compiles the indicator and both Expert Advisors with MetaEditor on a
+# Windows runner. Fails if MetaEditor reports any error or if an .ex5 is
+# not produced. Compile logs and binaries are uploaded as artifacts.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["arena/**", "main"]
+    paths:
+      - "**.mq5"
+      - "**.mqh"
+      - ".github/workflows/mql5-compile.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install MetaTrader 5 (silent)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RUNNER_TEMP 'mt5setup.exe'
+          Invoke-WebRequest -Uri 'https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe' -OutFile $installer
+          $proc = Start-Process -FilePath $installer -ArgumentList '/auto' -PassThru
+          if (-not $proc.WaitForExit(900000)) { throw 'MT5 installer did not finish within 15 minutes' }
+
+          # Locate MetaEditor (the install folder can vary between builds)
+          $roots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, (Join-Path $env:LOCALAPPDATA 'Programs'), $env:LOCALAPPDATA) | Where-Object { $_ -and (Test-Path $_) }
+          $editor = $null
+          foreach ($r in $roots) {
+            $hit = Get-ChildItem -Path $r -Filter 'metaeditor64.exe' -Recurse -ErrorAction SilentlyContinue -Depth 4 | Select-Object -First 1
+            if ($hit) { $editor = $hit.FullName; break }
+          }
+          if (-not $editor) { throw 'metaeditor64.exe not found after installation' }
+          Write-Host "MetaEditor: $editor"
+          "MT5_EDITOR=$editor" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Compile indicator, then EAs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $editor  = $env:MT5_EDITOR
+          $mt5Dir  = Split-Path $editor
+          $mql5    = Join-Path $mt5Dir 'MQL5'
+          $logDir  = Join-Path $env:RUNNER_TEMP 'mql5-logs'
+          New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+          # Shared include used via <Datetime.mqh>
+          Copy-Item 'Datetime.mqh' (Join-Path $mql5 'Include') -Force
+
+          function Invoke-Compile([string]$relSrc) {
+            $src  = (Resolve-Path $relSrc).Path
+            $name = [IO.Path]::GetFileNameWithoutExtension($src)
+            $log  = Join-Path $logDir ($name + '.log')
+            if (Test-Path $log) { Remove-Item $log -Force }
+            $p = Start-Process -FilePath $editor -ArgumentList @("/compile:`"$src`"", "/log:`"$log`"") -PassThru -WindowStyle Hidden
+            if (-not $p.WaitForExit(600000)) { $p.Kill(); throw "MetaEditor timed out compiling $src" }
+
+            if (-not (Test-Path $log)) { throw "No compile log produced for $src" }
+            $text = [IO.File]::ReadAllText($log, [Text.Encoding]::Unicode)
+            Write-Host "----- $src -----"
+            Write-Host $text
+            $m = [regex]::Match($text, 'Result:\s*(\d+)\s+errors?,\s*(\d+)\s+warnings?')
+            if (-not $m.Success) { throw "No 'Result:' line in compile log for $src" }
+            $errors = [int]$m.Groups[1].Value
+            if ($errors -gt 0) { throw "$src failed with $errors error(s)" }
+            return [IO.Path]::ChangeExtension($src, '.ex5')
+          }
+
+          # 1) Indicator first: the EAs embed it with #resource "\\ATRStopLoss_Ind.ex5"
+          $ind = Invoke-Compile 'ATRStopLoss_Ind.mq5'
+          Copy-Item $ind (Join-Path $mql5 'Indicators') -Force
+          Copy-Item $ind (Join-Path $mql5 'ATRStopLoss_Ind.ex5') -Force
+
+          # 2) Expert Advisors
+          $eas = @('Golden Strategist EA_v1.mq5', 'Golden Strategist EA_v2.mq5')
+          $built = @()
+          foreach ($ea in $eas) { $built += (Invoke-Compile $ea) }
+          $built | ForEach-Object { if (-not (Test-Path $_)) { throw "Expected binary missing: $_" } }
+          Write-Host "All compiled: $($built -join ', ')"
+
+      - name: Upload logs and binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mql5-compile-output
+          path: |
+            ${{ runner.temp }}/mql5-logs/*.log
+            *.ex5
+          if-no-files-found: warn
