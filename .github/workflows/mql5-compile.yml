@@ -112,12 +112,14 @@ jobs:
                 Note ("log lines for ${name}: " + ($lines -join ' | '))
                 throw "$src failed with $errors error(s)"
               }
-              return [IO.File]::ChangeExtension($src, '.ex5')
+              return [IO.Path]::ChangeExtension($src, '.ex5')
             }
 
             # 1) Indicator first: the EAs embed it with #resource "\\ATRStopLoss_Ind.ex5"
             $ind = Invoke-Compile 'ATRStopLoss_Ind.mq5'
-            Copy-Item $ind (Join-Path $mql5 'Indicators') -Force
+            $indDir = Join-Path $mql5 'Indicators'
+            New-Item -ItemType Directory -Force -Path $indDir | Out-Null
+            Copy-Item $ind $indDir -Force
             Copy-Item $ind (Join-Path $mql5 'ATRStopLoss_Ind.ex5') -Force
 
             # 2) Expert Advisors
