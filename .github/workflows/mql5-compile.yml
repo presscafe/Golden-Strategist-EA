@@ -56,6 +56,29 @@ jobs:
           Start-Sleep -Seconds 30   # let remaining file copies settle
           "MT5_EDITOR=$editor" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Initialise MT5 standard library
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The MQL5 standard library (Include\Trade\...) is only created on the
+          # terminal's first start. Start it once in portable mode, wait for it,
+          # then stop it again.
+          $mt5Dir = Split-Path $env:MT5_EDITOR
+          $term   = Join-Path $mt5Dir 'terminal64.exe'
+          $trade  = Join-Path $mt5Dir 'MQL5\Include\Trade\Trade.mqh'
+          if (-not (Test-Path $trade)) {
+            Start-Process -FilePath $term -ArgumentList '/portable' | Out-Null
+            $deadline = (Get-Date).AddMinutes(10)
+            while (-not (Test-Path $trade) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 10 }
+            Start-Sleep -Seconds 30   # let the rest of the library finish copying
+            Get-Process -Name 'terminal64' -ErrorAction SilentlyContinue | Stop-Process -Force
+          }
+          Write-Host "Trade.mqh present: $(Test-Path $trade)"
+          if (-not (Test-Path $trade)) {
+            Write-Output "::warning title=mql5::Trade.mqh not found under $mt5Dir"
+            Get-ChildItem -Path $env:APPDATA, $mt5Dir -Filter 'Trade.mqh' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "found: $($_.FullName)" }
+          }
+
       - name: Compile indicator, then EAs
         shell: pwsh
         run: |
