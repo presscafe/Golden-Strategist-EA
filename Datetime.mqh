@@ -23,7 +23,7 @@ struct CDateTime : public MqlDateTime
    //--- data access
    datetime          DateTime(void)                      { return(StructToTime(this));        }
    void              DateTime(const datetime value)      { TimeToStruct(value,this);          }
-   void              DateTime(const MqlDateTime& value)  { this=value;                        }
+   void              DateTime(const MqlDateTime& value)  { year=value.year; mon=value.mon; day=value.day; hour=value.hour; min=value.min; sec=value.sec; day_of_week=value.day_of_week; day_of_year=value.day_of_year; }
    void              Date(const datetime value);
    void              Date(const MqlDateTime &value);
    void              Time(const datetime value);
