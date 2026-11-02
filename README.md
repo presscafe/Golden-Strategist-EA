@@ -14,7 +14,7 @@ Experimental MetaTrader 5 Expert Advisors (MQL5) for trading gold (XAUUSD), buil
 | `GlobalVariables.mqh` | Global-variable and synchronisation helpers (`GlobalVariable`, `Semaphore`, `AtomicVar`). Used only by the prototype in `extra/`. |
 | `HMAInclude.mqh` | `CHull` class for a Hull Moving Average calculation and a `getPrice` helper. Used only by the prototype in `extra/`. |
 | `extra/ATREA.mq5` | Prototype EA using the ATR stop indicator with London/New York session times. Not reviewed for trading use. |
-| `extra/HMAEA.mq5` | Prototype EA combining the HMA include and an ATR class. **Its sell condition (`close > HMA && close <= HMA`) can never be true, so it never sells.** Its buy condition can fire. It also depends on a `Hull average 2` indicator that is not in this repository. |
+| `extra/HMAEA.mq5` | Prototype EA that trades HMA crossovers (buy when the last closed bar crosses above the HMA, sell when it crosses below), at most once per hour, with a trailing stop. Depends on a `Hull average 2` indicator that is not in this repository, and has not been tested. |
 
 ## How the v1 and v2 Expert Advisors work
 
@@ -30,7 +30,7 @@ Units: `limitPriceGap` and `stopLossPips` are multiplied by `_Point`, so they ar
 
 Known differences between v1 and v2:
 
-- **Session window.** v1 is meant to trade between 08:00 and 22:00 on the server clock. v2 trades only between 12:00 and 15:00 on the server clock. Both comments describe these times as GMT, but the code compares them with the broker's server time. Confirm which clock your broker uses.
+- **Session window.** v1 trades between 08:00 and 22:00 and v2 between 12:00 and 15:00, both on the broker's **server time**. The code comments describe these times as GMT, but the code does not convert them, so the windows will shift with your broker's server offset.
 - **Lot size.** v1 reads it from an input. v2 hardcodes 0.02.
 - **Defaults.** See the table above.
 
@@ -45,7 +45,7 @@ Known differences between v1 and v2:
 
 - Compilation has **not** been verified in this environment, which has no MetaEditor. Compile in MetaEditor before use.
 - The `#resource` path and `iCustom` name depend on your installation (see step 2 above).
-- Session-time comments and the code's clock do not match (see above).
+- Session-time comments say GMT, but the code uses broker server time (see above).
 - `extra/` contains unfinished prototypes. They are not maintained alongside the v1/v2 EAs.
 - The repository has no `LICENSE` file. An older version of this README said the project is MIT-licensed, but no license text is included, so confirm the terms with the author before reusing the code.
 

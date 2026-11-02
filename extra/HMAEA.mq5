@@ -160,46 +160,35 @@ void OnTick()
     double currentATR = ExtATRBuffer[rates_total - 1];
     double stopLossATRMultiplier = 2; // Set the stop loss to be 2 times the ATR value away from the current price
 
-    double closeArray[2];
-    if (CopyClose(_Symbol, _Period, 0, 2, closeArray) == -1)
+    // Series arrays: index 0 = forming bar, index 1 = last closed bar, index 2 = bar before that.
+    double closeArray[3];
+    ArraySetAsSeries(closeArray, true);
+    if (CopyClose(_Symbol, _Period, 0, 3, closeArray) != 3)
     {
         Print("Error copying close prices: ", GetLastError());
         return;
     }
-    double currentClose = closeArray[0];
-    double currentPrice = closeArray[1];
 
-    double hmaArray[2];
-    int copied = CopyBuffer(iCustom(_Symbol, _Period, "Hull average 2", HMA_Period, HMA_Divisor, (int)HMA_Price), 0, 0, 2, hmaArray);
-    if (copied <= 0)
+    double hmaArray[3];
+    ArraySetAsSeries(hmaArray, true);
+    int copied = CopyBuffer(iCustom(_Symbol, _Period, "Hull average 2", HMA_Period, HMA_Divisor, (int)HMA_Price), 0, 0, 3, hmaArray);
+    if (copied != 3)
     {
         Print("Error copying HMA buffer: ", GetLastError());
         return;
     }
 
-    Comment("currentClose: " + currentClose + " CurrentPrice: " + currentPrice + "hullValues: " + hmaArray[0] + " hullValues: " + hmaArray[1]);
+    Comment("Last closed close: ", closeArray[1], "  HMA: ", hmaArray[1]);
 
-    double currentHMA = hmaArray[0];
-    double previousHMA = hmaArray[1];
+    // Crossover on the last closed bar, compared with the bar before it.
+    bool crossUp   = (closeArray[2] <= hmaArray[2] && closeArray[1] >  hmaArray[1]);
+    bool crossDown = (closeArray[2] >= hmaArray[2] && closeArray[1] <  hmaArray[1]);
 
     datetime currentTime = TimeCurrent();
 
     if (currentTime - lastTradeTime >= (1 * 60 * 60))
     {
-        if (currentClose > previousHMA && currentClose <= previousHMA)
-        {
-            // Place SELL order
-            if (!trade.Sell(0.01, _Symbol, SymbolInfoDouble(_Symbol, SYMBOL_BID), 0, 0))
-            {
-                Print("Sell order failed with error ", GetLastError());
-            }
-            else
-            {
-                Print("Sell order placed: ticket=", trade.ResultOrder(), " volume=", 0.01, " open price=", SymbolInfoDouble(_Symbol, SYMBOL_BID));
-                lastTradeTime = currentTime;
-            }
-        }
-        else if (currentClose < previousHMA && currentPrice >= previousHMA)
+        if (crossUp)
         {
             // Place BUY order
             if (!trade.Buy(0.01, _Symbol, SymbolInfoDouble(_Symbol, SYMBOL_ASK), 0, 0))
@@ -209,6 +198,19 @@ void OnTick()
             else
             {
                 Print("Buy order placed: ticket=", trade.ResultOrder(), " volume=", 0.01, " open price=", SymbolInfoDouble(_Symbol, SYMBOL_ASK));
+                lastTradeTime = currentTime;
+            }
+        }
+        else if (crossDown)
+        {
+            // Place SELL order
+            if (!trade.Sell(0.01, _Symbol, SymbolInfoDouble(_Symbol, SYMBOL_BID), 0, 0))
+            {
+                Print("Sell order failed with error ", GetLastError());
+            }
+            else
+            {
+                Print("Sell order placed: ticket=", trade.ResultOrder(), " volume=", 0.01, " open price=", SymbolInfoDouble(_Symbol, SYMBOL_BID));
                 lastTradeTime = currentTime;
             }
         }
