@@ -80,7 +80,7 @@ bool IsTradingAllowed()
 
     //  if (curTimeSeconds >= tradingStart && curTimeSeconds < tradingEnd)
     //     return true;
-        if (curTimeSeconds >= LONDON_OPEN && curTimeSeconds < NY_CLOSE)
+        if (curTimeSeconds >= londonOpen && curTimeSeconds < nyClose)
             return true;
 
     return false;

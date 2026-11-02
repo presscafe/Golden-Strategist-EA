@@ -1,54 +1,54 @@
-Golden Strategist EA README
-Introduction
-The Golden Strategist EA is a trading bot designed for the XAUUSD (GOLD) symbol on the 1-hour time frame. It uses price action as the primary buy/sell signal and is written in MQL5, a C++ based programming language. This project aims to develop a working trading bot that utilizes price action as buy/sell signals and serves as a guide for beginners on creating their own trading bots.
-About the Project
-Project Overview
-The Golden Strategist EA is designed to be a customizable trading bot that can be adapted to various trading strategies and preferences. It is built using MQL5, a powerful programming language for creating Expert Advisors (EAs) for MetaTrader 5.
-Project Goals
-Develop a working trading bot that utilizes price action as buy/sell signals
-Provide a guide for beginners on creating their own trading bots
-Design the EA to be customizable, allowing developers to add new features and strategies
-Algorithm Structure
-Preprocessor Directives
-These directives are used to set properties, define constants, include files, and import functions/libraries. They are declared at the top of each MQL program.
-Inputs and Global Variables
-Inputs: Parameters accessible to the user once the program is compiled. These values can be customized depending on user inputs.
-Global Variables: Additional variables used to interact with input and output of different classes and functions within the program.
-Classes
-CTrade: for executing orders
-CTrailing: for trail stops
-CiMA: a class for time series indicators, including moving averages
-Price_Action: a class for open range breakout strategy
-CTradeVirtual: for executing orders virtually
-CTrailingVirtual: for virtual trail stops
-VirtualTradeInfo: Virtual Environment: information on virtual trades
-EA Features and Inputs
-SymbolInformation: Contains the StartOFTradingHour_ServerTime for XAUUSD, with a default value of "1".
-Trade Management:
-TakeProfit: Integer input, default "1200"
-StopLoss: Integer input, default "400"
-MaxTradePerDay: Integer input, default "2"
-Usage
-Platform Compatibility: This EA can be used on the MetaTrader 5 platform.
-Trading Strategy: It is designed for trend-following trading on the GOLD symbol.
-Technical Indicators: The EA uses moving averages and the Relative Strength Index (RSI) to identify profitable trading opportunities.
-Customization
-Parameter Settings: Users can customize parameters such as moving average period, RSI period, grid trading step, and trailing stop value to suit their trading preferences.
-Strategy Adaptation: The EA can be adapted to various trading strategies by modifying the input parameters and adding new features.
-Additional Features
-Virtual Trading: The EA includes virtual trading capabilities, allowing users to test their strategies without risking real capital.
-Trade Management: The EA includes advanced trade management features, such as take profit and stop loss, to help users manage their trades effectively.
-Installation and Setup
-MetaTrader 5 Installation: Install MetaTrader 5 on your computer.
-EA Installation: Download the Golden Strategist EA from the GitHub repository and install it in the MetaTrader 5 platform.
-Setup: Configure the EA by setting the input parameters and customizing the trading strategy.
-Troubleshooting
-Common Issues: Common issues and their solutions are documented in the troubleshooting section.
-Error Handling: The EA includes error handling mechanisms to handle unexpected errors and exceptions.
-Contributing
-Contributors: Contributions are welcome from developers who want to improve the EA or add new features.
-Pull Requests: Developers can submit pull requests to the GitHub repository to contribute to the project.
-License
-License Terms: The Golden Strategist EA is licensed under the MIT License.
-Usage Restrictions: The EA can be used for personal or commercial purposes, but it must not be used for malicious or illegal activities.
-Please note that this README file content is a comprehensive summary of the provided GitHub repository. For detailed information, please refer to the actual repository and its files.
+# Golden Strategist EA
+
+Experimental MetaTrader 5 Expert Advisors (MQL5) for trading gold (XAUUSD), built around an ATR-based trailing stop indicator. The code is a learning-oriented project and has **not been backtested or forward-tested in this repository**. Treat it as a starting point, not a finished trading system.
+
+## Repository contents
+
+| File | Role |
+| --- | --- |
+| `Golden Strategist EA_v1.mq5` | Expert Advisor, version 1. Fixed lot size (`lotSize` input, default 0.02). Wider defaults (`limitPriceGap` 200, `stopLossPips` 300). |
+| `Golden Strategist EA_v2.mq5` | Expert Advisor, version 2. Lot size hardcoded to 0.02. Wider defaults (`limitPriceGap` 400, `stopLossPips` 600) and a different session window. |
+| `ATRStopLoss_Ind.mq5` | Custom indicator that draws ATR-based stop lines (`Up` and `Dn` buffers). Based on Rosh Jardine's ATR stop-loss indicator. Both EAs read it with `iCustom`. |
+| `atr.mq5` | Standard ATR indicator (MetaQuotes sample), included as reference. |
+| `Datetime.mqh` | Date/time helper struct (`CDateTime`), from MetaQuotes' standard library. Included as `<Datetime.mqh>` by the EAs. |
+| `GlobalVariables.mqh` | Global-variable and synchronisation helpers (`GlobalVariable`, `Semaphore`, `AtomicVar`). Used only by the prototype in `extra/`. |
+| `HMAInclude.mqh` | `CHull` class for a Hull Moving Average calculation and a `getPrice` helper. Used only by the prototype in `extra/`. |
+| `extra/ATREA.mq5` | Prototype EA using the ATR stop indicator with London/New York session times. Not reviewed for trading use. |
+| `extra/HMAEA.mq5` | Prototype EA combining the HMA include and an ATR class. **Its sell condition (`close > HMA && close <= HMA`) can never be true, so it never sells.** Its buy condition can fire. It also depends on a `Hull average 2` indicator that is not in this repository. |
+
+## How the v1 and v2 Expert Advisors work
+
+Both EAs run the same basic loop on each tick:
+
+1. **Session filter.** Trading is allowed only inside a time window (see the differences below). Outside that window, the EA does nothing unless it already has open positions.
+2. **Signal.** The last closed bar's close is compared with the indicator's `Up` line (buy) and `Dn` line (sell). A buy signal is `close > Up`; a sell signal is `close < Dn`.
+3. **Entry.** When a signal appears and the EA is allowed to place an order, it places a **stop order** `limitPriceGap` above the ask (buy) or below the bid (sell), with a stop loss `stopLossPips` away. Only one order cycle runs at a time.
+4. **Pending-order cleanup.** Buy/sell stop orders older than 5 minutes (300 seconds) are deleted.
+5. **Trailing.** Each open position's stop loss is moved to the current indicator line when it changes.
+
+Units: `limitPriceGap` and `stopLossPips` are multiplied by `_Point`, so they are in **points** (broker price increments), not pips.
+
+Known differences between v1 and v2:
+
+- **Session window.** v1 is meant to trade between 08:00 and 22:00 on the server clock. v2 trades only between 12:00 and 15:00 on the server clock. Both comments describe these times as GMT, but the code compares them with the broker's server time. Confirm which clock your broker uses.
+- **Lot size.** v1 reads it from an input. v2 hardcodes 0.02.
+- **Defaults.** See the table above.
+
+## Installation
+
+1. Copy the `.mqh` include files (`Datetime.mqh`, and any others you use) into your terminal's `MQL5/Include/` folder. `Datetime.mqh` is loaded with `<...>` syntax, so it must be in that folder or the EA will not compile.
+2. Compile `ATRStopLoss_Ind.mq5` in MetaEditor. Both EAs call it by name, and v1/v2 also embed it with `#resource "\\ATRStopLoss_Ind.ex5"`. Check that the `.ex5` path in that line matches where MetaEditor puts the compiled file on your machine.
+3. Compile the EA you want (`Golden Strategist EA_v1.mq5` or `_v2.mq5`) and attach it to an XAUUSD chart. The code does not check the symbol or timeframe. The original project notes say H1 was the intended timeframe.
+4. Test on a demo account first.
+
+## Status and known issues
+
+- Compilation has **not** been verified in this environment, which has no MetaEditor. Compile in MetaEditor before use.
+- The `#resource` path and `iCustom` name depend on your installation (see step 2 above).
+- Session-time comments and the code's clock do not match (see above).
+- `extra/` contains unfinished prototypes. They are not maintained alongside the v1/v2 EAs.
+- The repository has no `LICENSE` file. An older version of this README said the project is MIT-licensed, but no license text is included, so confirm the terms with the author before reusing the code.
+
+## Risk warning
+
+Automated trading can lose money quickly, including the full account balance. Test thoroughly on a demo account before any live use. This project comes with no warranty and no guarantee of profit.
