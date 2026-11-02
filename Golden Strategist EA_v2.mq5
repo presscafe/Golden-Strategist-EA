@@ -1,5 +1,6 @@
 #include <Trade\Trade.mqh>
 #include <Datetime.mqh>
+#include "GSRiskControls.mqh"
 #resource "\\ATRStopLoss_Ind.ex5"
 
 CTrade trade;
@@ -25,6 +26,14 @@ input float InpAtrMultiplier = 1; // ATR multiplier
 
 input float limitPriceGap = 400;
 input float stopLossPips = 600.0;
+input float lotSize = 0.02;     // Lot size (used when InpRiskPercent = 0)
+
+// ---- Safety and risk controls (defaults keep the original behaviour where possible) ----
+input long   InpMagicNumber      = 26110202; // Magic number: tags this EA's orders and positions
+input int    InpMaxSpreadPoints  = 0;        // Max spread (points) for new entries, 0 = off
+input double InpRiskPercent      = 0.0;      // Risk per trade (% of equity), 0 = use lotSize
+input double InpMaxDailyLossPct  = 0.0;      // Max daily loss (% of day-start equity), 0 = off
+input int    InpMaxEntriesPerDay = 0;        // Max new entries per day, 0 = off
 
 double lastStopLossArrayUp = -1;
 double lastStopLossArrayDn = -1;
@@ -70,10 +79,19 @@ bool IsTradingAllowed()
 
 bool CheckPositions()
 {
-    if(PositionsTotal() > 0) // if there are open positions
+    if(GS_CountOwnPositions(_Symbol, InpMagicNumber) > 0) // this EA's open positions
         return true; // continue with logic
     
     return false; // no open positions
+}
+
+//+------------------------------------------------------------------+
+//| Expert initialisation: tag all orders with the magic number.     |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+    trade.SetExpertMagicNumber((ulong)InpMagicNumber);
+    return (INIT_SUCCEEDED);
 }
 
 //+------------------------------------------------------------------+
@@ -81,6 +99,26 @@ bool CheckPositions()
 //+------------------------------------------------------------------+
 void OnTick()
 {   
+    // Expire this EA's stale pending orders first, so this runs even outside trading hours
+    // Delete all pending orders older than 5 minutes (300 seconds)
+    for(int i=OrdersTotal()-1; i>=0; i--)
+    {
+        ulong ticket = OrderGetTicket(i);
+        if (ticket == 0)  // OrderGetTicket returns 0 on failure
+            continue;
+
+        ENUM_ORDER_TYPE orderType = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+        if ((orderType == ORDER_TYPE_BUY_STOP || orderType == ORDER_TYPE_SELL_STOP)
+            && OrderGetString(ORDER_SYMBOL) == _Symbol && OrderGetInteger(ORDER_MAGIC) == InpMagicNumber)
+        {
+            datetime orderTime = (datetime)OrderGetInteger(ORDER_TIME_SETUP);
+            if (TimeCurrent() - orderTime > 300)
+            {
+                trade.OrderDelete(ticket);
+            }
+        }
+    }
+
     // It is outside trading hours, check for open positions
     if (!IsTradingAllowed() && !CheckPositions())
     {
@@ -92,24 +130,6 @@ void OnTick()
     datetime Time[];                                  // Array to store the time values
     CopyTime(_Symbol, _Period, 0, rates_total, Time); // Copy the time values to the array
     
-    // Delete all pending orders older than 5 minutes (300 seconds)
-    for(int i=OrdersTotal()-1; i>=0; i--)
-    {
-        ulong ticket = OrderGetTicket(i);
-        if (ticket == 0)  // OrderGetTicket returns 0 on failure
-            continue;
-
-        ENUM_ORDER_TYPE orderType = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
-        if (orderType == ORDER_TYPE_BUY_STOP || orderType == ORDER_TYPE_SELL_STOP)
-        {
-            datetime orderTime = (datetime)OrderGetInteger(ORDER_TIME_SETUP);
-            if (TimeCurrent() - orderTime > 300)
-            {
-                trade.OrderDelete(ticket);
-            }
-        }
-    }
-
     Print("Trade Placed: ", tradePlaced);    // Print the value of tradePlaced
     Print("Can Place Buy: ", canPlaceBuy);   // Print the value of canPlaceBuy
     Print("Can Place Sell: ", canPlaceSell); // Print the value of canPlaceSell
@@ -144,7 +164,7 @@ void OnTick()
         lastStopLossArrayDn = ATRStopLossDnBuffer[0];
     }
     
-    if (PositionsTotal() == 0 && OrdersTotal() == 0)
+    if (GS_CountOwnPositions(_Symbol, InpMagicNumber) == 0 && GS_CountOwnOrders(_Symbol, InpMagicNumber) == 0)
     {
         tradePlaced = false;
     }
@@ -152,10 +172,10 @@ void OnTick()
     for (int i = PositionsTotal() - 1; i >= 0; i--)
     {
         ulong ticket = PositionGetTicket(i);
-        if (ticket != INVALID_HANDLE)
+        if (ticket != 0)
         {
             string symbol = PositionGetString(POSITION_SYMBOL);
-            if (symbol == _Symbol)
+            if (symbol == _Symbol && PositionGetInteger(POSITION_MAGIC) == InpMagicNumber)
             {
                 ENUM_POSITION_TYPE positionType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
                 switch (positionType)
@@ -173,63 +193,95 @@ void OnTick()
         }
     }
 
+    // ---- Entry gates: block NEW entries only; open trades are still managed ----
+    string blockReason = "";
+    if (!GS_SpreadOK(_Symbol, InpMaxSpreadPoints))
+        blockReason = "Entries blocked: spread above InpMaxSpreadPoints.";
+    else if (GS_DailyLossBreached(InpMaxDailyLossPct))
+        blockReason = "Entries blocked: daily loss limit (InpMaxDailyLossPct) reached.";
+    else if (InpMaxEntriesPerDay > 0 && GS_EntriesToday(_Symbol, InpMagicNumber) >= InpMaxEntriesPerDay)
+        blockReason = "Entries blocked: InpMaxEntriesPerDay reached.";
+    static string lastBlockReason = "";
+    if (blockReason != lastBlockReason)   // log only when the state changes, not every tick
+    {
+        if (blockReason != "")
+            Print(blockReason);
+        lastBlockReason = blockReason;
+    }
+    bool canEnter = (blockReason == "");
+
     if (tradePlaced == false)
     {
         double stopLossPrice;
 
-        double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-
-        if (validBuyCondition && canPlaceBuy)
+        if (validBuyCondition && canPlaceBuy && canEnter)
         {
             double askPrice = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-            stopLossPrice = askPrice - stopLossPips * _Point;
             double BuyStopPrice = NormalizeDouble(askPrice + (limitPriceGap * _Point), _Digits); // Adjust for BuyStop
             stopLossPrice = NormalizeDouble(BuyStopPrice - (stopLossPips * _Point), _Digits);    // Calculate stop loss from BuyStopPrice
 
-            Print("Buy Stop Price: ", BuyStopPrice);   // Print the value of BuyStopPrice
-            Print("Stop Loss Price: ", stopLossPrice); // Print the value of stopLossPrice
             // Ensure the BuyStopPrice is above the current market price
             if (BuyStopPrice > askPrice)
             {
-                buyLimitTicket = trade.BuyStop(0.02, BuyStopPrice, _Symbol, stopLossPrice, 0); // Use BuyStop
-                // If a buy stop order is placed successfully, delete any existing sell stop order
-                if (buyLimitTicket > 0 && sellLimitTicket > 0)
+                double buyVolume = GS_LotForRisk(_Symbol, InpRiskPercent, stopLossPips * _Point, lotSize);
+                if (buyVolume <= 0.0)
                 {
-                    trade.OrderDelete(sellLimitTicket);
-                    sellLimitTicket = 0; // Reset the sellLimitTicket
+                    Print("Skipping BUY: risk budget is below the broker minimum lot.");
                 }
-                buyLimitTime = TimeCurrent(); // Store the time the buy stop order was placed
-                tradePlaced = true;
-                canPlaceBuy = false;
-                canPlaceSell = false;
+                else
+                {
+                    // CTrade::BuyStop returns bool; the order ticket comes from ResultOrder()
+                    if (trade.BuyStop(buyVolume, BuyStopPrice, _Symbol, stopLossPrice, 0))
+                        buyLimitTicket = trade.ResultOrder();
+                        // If a buy stop is placed, cancel any opposite sell stop
+                        if (buyLimitTicket > 0 && sellLimitTicket > 0)
+                        {
+                            trade.OrderDelete(sellLimitTicket);
+                            sellLimitTicket = 0;
+                        }
+                    else
+                        Print("BuyStop failed: ", trade.ResultRetcodeDescription());
+
+                    buyLimitTime = TimeCurrent(); // Store the time the buy stop order was placed
+                    tradePlaced = true;
+                    canPlaceBuy = false;
+                    canPlaceSell = false;
+                }
             }
         }
-        else if (validSellCondition && canPlaceSell)
+        else if (validSellCondition && canPlaceSell && canEnter)
         {
             double bidPrice = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-            stopLossPrice = bidPrice + stopLossPips * _Point;
             double SellStopPrice = NormalizeDouble(bidPrice - (limitPriceGap * _Point), _Digits); // Adjust for SellStop
             stopLossPrice = NormalizeDouble(SellStopPrice + (stopLossPips * _Point), _Digits);    // Calculate stop loss from SellStopPrice
-
-            Print("Sell Stop Price: ", SellStopPrice); // Print the value of SellStopPrice
-            Print("Stop Loss Price: ", stopLossPrice); // Print the value of stopLossPrice
 
             // Ensure the SellStopPrice is below the current market price
             if (SellStopPrice < bidPrice)
             {
-                sellLimitTicket = trade.SellStop(0.02, SellStopPrice, _Symbol, stopLossPrice, 0); // Use SellStop
-                // If a sell stop order is placed successfully, delete any existing buy stop order
-                if (sellLimitTicket > 0 && buyLimitTicket > 0)
+                double sellVolume = GS_LotForRisk(_Symbol, InpRiskPercent, stopLossPips * _Point, lotSize);
+                if (sellVolume <= 0.0)
                 {
-                    trade.OrderDelete(buyLimitTicket);
-                    buyLimitTicket = 0; // Reset the buyLimitTicket
+                    Print("Skipping SELL: risk budget is below the broker minimum lot.");
                 }
-                sellLimitTime = TimeCurrent(); // Store the time the sell stop order was placed
-                tradePlaced = true;
-                canPlaceSell = false;
-                canPlaceBuy = false;
+                else
+                {
+                    if (trade.SellStop(sellVolume, SellStopPrice, _Symbol, stopLossPrice, 0))
+                        sellLimitTicket = trade.ResultOrder();
+                        // If a sell stop is placed, cancel any opposite buy stop
+                        if (sellLimitTicket > 0 && buyLimitTicket > 0)
+                        {
+                            trade.OrderDelete(buyLimitTicket);
+                            buyLimitTicket = 0;
+                        }
+                    else
+                        Print("SellStop failed: ", trade.ResultRetcodeDescription());
+
+                    sellLimitTime = TimeCurrent(); // Store the time the sell stop order was placed
+                    tradePlaced = true;
+                    canPlaceSell = false;
+                    canPlaceBuy = false;
+                }
             }
         }
     }
-    
 }

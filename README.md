@@ -10,6 +10,7 @@ Market and competitor analysis, with sources and a prioritised roadmap: [docs/ma
 | --- | --- |
 | `Golden Strategist EA_v1.mq5` | Expert Advisor, version 1. Fixed lot size (`lotSize` input, default 0.02). Wider defaults (`limitPriceGap` 200, `stopLossPips` 300). |
 | `Golden Strategist EA_v2.mq5` | Expert Advisor, version 2. Lot size hardcoded to 0.02. Wider defaults (`limitPriceGap` 400, `stopLossPips` 600) and a different session window. |
+| `GSRiskControls.mqh` | Shared safety helpers used by both EAs: magic-number filtering, spread check, daily-loss limit, entries-per-day count, risk-based lot sizing. **Keep it in the same folder as the EAs.** |
 | `ATRStopLoss_Ind.mq5` | Custom indicator that draws ATR-based stop lines (`Up` and `Dn` buffers). Based on Rosh Jardine's ATR stop-loss indicator. Both EAs read it with `iCustom`. |
 | `atr.mq5` | Standard ATR indicator (MetaQuotes sample), included as reference. |
 | `Datetime.mqh` | Date/time helper struct (`CDateTime`), from MetaQuotes' standard library. Included as `<Datetime.mqh>` by the EAs. |
@@ -36,16 +37,32 @@ Known differences between v1 and v2:
 - **Lot size.** v1 reads it from an input. v2 hardcodes 0.02.
 - **Defaults.** See the table above.
 
+## Safety settings (both EAs)
+
+Each EA has these inputs. Defaults keep the original behaviour, except that trade tagging and position management are now limited to the EA's own orders.
+
+| Input | Default | Effect |
+| --- | --- | --- |
+| `InpMagicNumber` | v1: 26110201, v2: 26110202 | Tags this EA's orders. The EA only manages orders and positions with its own symbol and magic number, so manual trades and other EAs are left alone. Give each EA on the same account a different number. |
+| `InpMaxSpreadPoints` | 0 (off) | No new entries while the spread is above this many points. |
+| `InpRiskPercent` | 0 (off) | When above 0, the lot size is set so that the stop-loss distance risks this percentage of equity. If the broker's minimum lot would exceed that risk, the EA skips the trade. When 0, the fixed lot size is used (`lotSize` in v1, 0.02 in v2 unless changed). |
+| `InpMaxDailyLossPct` | 0 (off) | No new entries once equity has fallen by this percentage of day-start equity (broker server day). Open trades are **not** closed. The reference equity is reset when the EA restarts mid-day. |
+| `InpMaxEntriesPerDay` | 0 (off) | Caps new entries (filled orders) per broker server day. |
+
+**Upgrading from an earlier version:** positions and pending orders opened by the earlier builds used magic number 0. The new builds do not manage them. Close or manage those trades manually before you switch.
+
+**Not yet implemented:** a news filter. Prop-firm accounts often forbid new trades around high-impact news, so do not use this EA on such an account until that is added.
+
 ## Installation
 
-1. Copy the `.mqh` include files (`Datetime.mqh`, and any others you use) into your terminal's `MQL5/Include/` folder. `Datetime.mqh` is loaded with `<...>` syntax, so it must be in that folder or the EA will not compile.
+1. Copy `Datetime.mqh` into your terminal's `MQL5/Include/` folder. Keep `GSRiskControls.mqh` in the same folder as the EA file, because the EAs include it with quotes. `Datetime.mqh` is loaded with `<...>` syntax, so it must be in that folder or the EA will not compile.
 2. Compile `ATRStopLoss_Ind.mq5` in MetaEditor. Both EAs call it by name, and v1/v2 also embed it with `#resource "\\ATRStopLoss_Ind.ex5"`. Check that the `.ex5` path in that line matches where MetaEditor puts the compiled file on your machine.
 3. Compile the EA you want (`Golden Strategist EA_v1.mq5` or `_v2.mq5`) and attach it to an XAUUSD chart. The code does not check the symbol or timeframe. The original project notes say H1 was the intended timeframe.
 4. Test on a demo account first.
 
 ## Status and known issues
 
-- Compilation has **not** been verified in this environment, which has no MetaEditor. Compile in MetaEditor before use.
+- Compilation has **not** been verified: this environment has no MetaEditor. The code has been syntax-checked with a C++ parser, which catches structural errors but not type or name errors. Compile in MetaEditor before use.
 - The `#resource` path and `iCustom` name depend on your installation (see step 2 above).
 - Session-time comments say GMT, but the code uses broker server time (see above).
 - `extra/` contains unfinished prototypes. They are not maintained alongside the v1/v2 EAs.

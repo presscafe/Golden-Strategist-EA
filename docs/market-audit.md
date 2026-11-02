@@ -153,3 +153,28 @@ Prioritised. Each item must pass the test in section 7 before it counts as done.
 16. Nordman Algorithms, prop firm EA rules and account closures 2026: https://www.nordman-algorithms.com/prop-firm-ea-rules-automated-trading-banned/
 17. Funded Trading, EA policy comparison by prop firm 2026: https://fundedtrading.com/prop-firms-for-expert-advisors-ea-trading/
 18. EAFunded, FTMO EA rules 2026: https://www.eafunded.com/firms/ftmo
+
+## 10. Implementation status (branch `arena/00fcdf61-golden-strategist-ea`)
+
+Status after applying the P0 and P1 items to both EAs. Nothing has been compiled in MetaEditor or backtested.
+
+| Item | Status | Notes |
+|---|---|---|
+| P0.1 Magic number, own-trade scope | Done | `InpMagicNumber` (v1 26110201, v2 26110202). Pending-order expiry, position management and trade counting filter on symbol and magic. |
+| P0.2 Compile check | Partly done | C++ parser syntax check: no errors, and the parser catches the original v1 syntax error. Type and name checks were done by hand. **Still needs a MetaEditor compile.** |
+| P0.3 Licence | Done | MIT `LICENSE`, with third-party licences listed. The copyright holder line needs your confirmation. |
+| P1.4 Risk-based lot sizing | Done (opt-in) | `InpRiskPercent`, default 0 keeps the fixed lot. |
+| P1.5 Daily loss guard | Done (opt-in) | `InpMaxDailyLossPct`, blocks new entries only. Does not close open trades. |
+| P1.6 Spread filter and max entries/day | Done (opt-in) | `InpMaxSpreadPoints` and `InpMaxEntriesPerDay`. |
+| P1.7 News filter | Not done | Needs MT5 calendar API verification in the terminal before use. Prop-firm accounts should not use the EAs until this is done. |
+| P2 Backtests and forward test | Not done | Requires a MetaEditor and Strategy Tester run. |
+| P3 Setfiles, panel, distribution | Not done | |
+
+Other fixes made while implementing these items:
+- Both EAs: `CTrade::BuyStop` and `SellStop` return `bool`. The order ticket is now read from `ResultOrder()`. The earlier code stored the `bool` as a ticket, so v2's cancel-the-opposite-order step never worked.
+- Both EAs: stale pending orders are expired before the session gate, so they are no longer left in place outside trading hours.
+- Both EAs: an order-ticket check that compared against `INVALID_HANDLE` (`-1`) instead of `0` was corrected.
+
+Open items found during the work, not yet addressed:
+- Trading-hour clock: both EAs compare the time against broker server time, but the code comments say GMT.
+- Only symbol and magic are filtered. Two EAs on the same symbol must use different magic numbers.
