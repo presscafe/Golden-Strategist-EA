@@ -92,23 +92,20 @@ void OnTick()
     datetime Time[];                                  // Array to store the time values
     CopyTime(_Symbol, _Period, 0, rates_total, Time); // Copy the time values to the array
     
-    // Delete all pending orders after 10 minutes
+    // Delete all pending orders older than 5 minutes (300 seconds)
     for(int i=OrdersTotal()-1; i>=0; i--)
     {
-        ulong ticket;
-        if (ticket != INVALID_HANDLE){
-            ticket = OrderGetTicket(i);
-            if (ticket != INVALID_HANDLE)
+        ulong ticket = OrderGetTicket(i);
+        if (ticket == 0)  // OrderGetTicket returns 0 on failure
+            continue;
+
+        ENUM_ORDER_TYPE orderType = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+        if (orderType == ORDER_TYPE_BUY_STOP || orderType == ORDER_TYPE_SELL_STOP)
+        {
+            datetime orderTime = (datetime)OrderGetInteger(ORDER_TIME_SETUP);
+            if (TimeCurrent() - orderTime > 300)
             {
-                ENUM_ORDER_TYPE orderType = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
-                if (orderType == ORDER_TYPE_BUY_STOP || orderType == ORDER_TYPE_SELL_STOP)
-                {
-                    datetime orderTime = OrderGetInteger(ORDER_TIME_SETUP);
-                    if (TimeCurrent() - orderTime > 300)
-                    {
-                        trade.OrderDelete(ticket);
-                    }
-                }
+                trade.OrderDelete(ticket);
             }
         }
     }

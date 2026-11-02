@@ -99,7 +99,7 @@ bool CheckPositions()
 //+------------------------------------------------------------------+
 void OnTick()
 {
-    It is outside trading hours, check for open positions
+    // It is outside trading hours, check for open positions
     if (!IsTradingAllowed() && !CheckPositions())
     {
         Print("Outside trading hours and no open positions. Exiting function.");
