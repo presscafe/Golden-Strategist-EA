@@ -64,7 +64,7 @@ Each EA has these inputs. Defaults keep the original behaviour, except that trad
 
 ## Status and known issues
 
-- Compilation has **not** been verified: this environment has no MetaEditor. The code has been syntax-checked with a C++ parser, which catches structural errors but not type or name errors. Compile in MetaEditor before use.
+- Compilation is checked in CI: `.github/workflows/mql5-compile.yml` compiles the indicator and both EAs with MetaEditor on a Windows runner, and the last run reported 0 errors. Warnings are not yet reviewed, and the code has not been run in a terminal or backtested. Compile in MetaEditor yourself before use.
 - The `#resource` path and `iCustom` name depend on your installation (see step 2 above).
 - Session-time comments say GMT, but the code uses broker server time (see above).
 - `extra/` contains unfinished prototypes. They are not maintained alongside the v1/v2 EAs.

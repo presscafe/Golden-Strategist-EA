@@ -6,7 +6,7 @@ Date: 2026-11-02. Scope: retail MetaTrader 5 Expert Advisors (EAs) for gold (XAU
 
 - **The market is large and crowded.** There are roughly 18,000 Expert Advisor listings on the MQL5 Market. Gold EAs sell for $190 to about $2,000, and the best-rated ones sell on verified live track records, reviews and "no grid / no martingale / prop-firm ready" claims.
 - **Trust is the product.** Regulators say legitimate systems show verifiable live results, disclose their drawdowns and don't promise returns. Backtest-only curves are the main warning sign.
-- **This EA is not sellable today.** It has no live track record, no backtest report in the repository, and no risk controls beyond a stop loss. v1 was effectively inactive until the session-filter bug was fixed in this branch (see `f503f5f`), and the code has not been compiled.
+- **This EA is not sellable today.** It has no live track record, no backtest report in the repository, and no risk controls beyond a stop loss. v1 was effectively inactive until the session-filter bug was fixed in this branch (see `f503f5f`), and the code had compile errors. v1's was fixed earlier; the shared `Datetime.mqh` had a second one, fixed in this branch. The CI compile check (MetaEditor on a Windows runner, run 41391768683) now builds the indicator and both EAs with 0 errors.
 - **There is a credible niche.** Open, auditable code with built-in prop-firm rule compliance (no grid or martingale, news and spread filters, daily-loss limit, risk-based sizing) and a published, reproducible forward record. Most paid gold EAs are closed-source and sell on screenshots; prop-firm rules are the main reason traders get accounts closed.
 - **Recommended position:** a free, transparent, prop-firm-ready core, with paid premium presets and a verified live signal. Outcompete on verifiability and compliance, not on claimed returns. We cannot promise profits. The gates in section 7 decide whether to sell at all.
 
@@ -59,7 +59,7 @@ Rating: Critical = blocks selling, High = a buyer or prop trader will reject it,
 |---|---|---|---|
 | Verified live record | Live signal, 6+ months, real account | None | **Critical** |
 | Backtest evidence | Every-tick, 5+ years, reported drawdown and profit factor | None in repo; never run | **Critical** |
-| Compilation | Compiles on current MetaEditor | Not compiled here; v1 had a syntax error (fixed) | **Critical** |
+| Compilation | Compiles on current MetaEditor | Compiled in CI with MetaEditor: indicator and both EAs, 0 errors (run 41391768683). Warnings not yet reviewed. | Done |
 | Magic number | Each EA identifies its own orders | None set. Orders use magic 0, shared with manual trades | **Critical** |
 | Position management scope | Only manages its own positions | Trailing loop modifies every position on the symbol, including manual trades and other EAs | **Critical** |
 | Risk-based sizing | Lot size set by % of equity, scaled to account | Fixed lot (v1 input, v2 hardcoded 0.02) | High |
@@ -100,7 +100,7 @@ Prioritised. Each item must pass the test in section 7 before it counts as done.
 
 **P0: safety and correctness (blocks everything else)**
 1. Set a magic number and restrict all position and order management to it.
-2. Compile in MetaEditor (or via a CI job using MetaEditor under Wine) and fix every warning.
+2. Compile in MetaEditor (the CI job does this on a Windows runner) and fix every warning. Warnings are not yet reviewed.
 3. Add a licence file (MIT, per the README) so the open-source position is real.
 
 **P1: risk controls (prop-firm rules)**
@@ -156,12 +156,12 @@ Prioritised. Each item must pass the test in section 7 before it counts as done.
 
 ## 10. Implementation status (branch `arena/00fcdf61-golden-strategist-ea`)
 
-Status after applying the P0 and P1 items to both EAs. Nothing has been compiled in MetaEditor or backtested.
+Status after applying the P0 and P1 items to both EAs. The indicator and both EAs compile with 0 errors in the CI job. Nothing has been backtested.
 
 | Item | Status | Notes |
 |---|---|---|
 | P0.1 Magic number, own-trade scope | Done | `InpMagicNumber` (v1 26110201, v2 26110202). Pending-order expiry, position management and trade counting filter on symbol and magic. |
-| P0.2 Compile check | Partly done | C++ parser syntax check: no errors, and the parser catches the original v1 syntax error. Type and name checks were done by hand. **Still needs a MetaEditor compile.** |
+| P0.2 Compile check | Done (CI) | `.github/workflows/mql5-compile.yml` installs MT5 on a Windows runner and compiles with MetaEditor. Result: 0 errors for the indicator and both EAs (run 41391768683). Fails the job on any error. Warnings are not yet reviewed, and the compile log is in the `mql5-compile-output` artifact. Checks on the runner are not a substitute for a demo run. |
 | P0.3 Licence | Done | MIT `LICENSE`, with third-party licences listed. The copyright holder line needs your confirmation. |
 | P1.4 Risk-based lot sizing | Done (opt-in) | `InpRiskPercent`, default 0 keeps the fixed lot. |
 | P1.5 Daily loss guard | Done (opt-in) | `InpMaxDailyLossPct`, blocks new entries only. Does not close open trades. |
