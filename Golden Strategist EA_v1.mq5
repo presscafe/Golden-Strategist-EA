@@ -50,6 +50,8 @@ input int    InpMaxSpreadPoints  = 0;        // Max spread (points) for new entr
 input double InpRiskPercent      = 0.0;      // Risk per trade (% of equity), 0 = use lotSize
 input double InpMaxDailyLossPct  = 0.0;      // Max daily loss (% of day-start equity), 0 = off
 input int    InpMaxEntriesPerDay = 0;        // Max new entries per day, 0 = off
+input int    InpNewsWindowMinutes = 0;        // Block new entries within N minutes of a HIGH-impact event, 0 = off
+input string InpNewsCurrency      = "USD";  // Currency whose high-impact events are checked
 
 double lastStopLossArrayUp = -1;
 double lastStopLossArrayDn = -1;
@@ -281,9 +283,15 @@ void OnTick()
     // }
 
     // ---- Entry gates: block NEW entries only; open trades are still managed ----
+    bool newsBlock = GS_NewsBlocked(InpNewsWindowMinutes, InpNewsCurrency);
+    if (newsBlock)   // do not let resting stop orders fill into the news spike
+        GS_DeleteOwnPendingOrders(trade, _Symbol, InpMagicNumber);
+
     string blockReason = "";
     if (!GS_SpreadOK(_Symbol, InpMaxSpreadPoints))
         blockReason = "Entries blocked: spread above InpMaxSpreadPoints.";
+    else if (newsBlock)
+        blockReason = "Entries blocked: high-impact news window (InpNewsWindowMinutes).";
     else if (GS_DailyLossBreached(InpMaxDailyLossPct))
         blockReason = "Entries blocked: daily loss limit (InpMaxDailyLossPct) reached.";
     else if (InpMaxEntriesPerDay > 0 && GS_EntriesToday(_Symbol, InpMagicNumber) >= InpMaxEntriesPerDay)

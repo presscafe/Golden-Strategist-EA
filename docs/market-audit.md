@@ -166,7 +166,7 @@ Status after applying the P0 and P1 items to both EAs. Nothing has been compiled
 | P1.4 Risk-based lot sizing | Done (opt-in) | `InpRiskPercent`, default 0 keeps the fixed lot. |
 | P1.5 Daily loss guard | Done (opt-in) | `InpMaxDailyLossPct`, blocks new entries only. Does not close open trades. |
 | P1.6 Spread filter and max entries/day | Done (opt-in) | `InpMaxSpreadPoints` and `InpMaxEntriesPerDay`. |
-| P1.7 News filter | Not done | Needs MT5 calendar API verification in the terminal before use. Prop-firm accounts should not use the EAs until this is done. |
+| P1.7 News filter | Done (opt-in, unverified in terminal) | `InpNewsWindowMinutes` (default off). Uses `CalendarValueHistory`, `CalendarEventById` and `CALENDAR_IMPORTANCE_HIGH`, whose names were checked against the MQL5 reference. Fails open if the calendar has no data. Also cancels the EA's pending stop orders during the window. Must be tested in the terminal before use on any prop-firm account. |
 | P2 Backtests and forward test | Not done | Requires a MetaEditor and Strategy Tester run. |
 | P3 Setfiles, panel, distribution | Not done | |
 

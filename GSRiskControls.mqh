@@ -9,6 +9,8 @@
 //| Keep this file next to the EA (the EAs include it with quotes).  |
 //+------------------------------------------------------------------+
 
+#include <Trade\Trade.mqh>
+
 //--- day tracking for the daily loss limit and entries-per-day limit
 int    g_gsDayKey         = -1;
 double g_gsDayStartEquity = 0.0;
@@ -176,4 +178,70 @@ double GS_LotForRisk(const string symbol, const double riskPct, const double slD
       lots = maxL;
 
    return NormalizeDouble(lots, GS_VolumeDigits(step));
+}
+
+//--- news filter cache (the calendar is queried at most once per minute)
+datetime g_gsNewsMinute = 0;
+bool     g_gsNewsBlocked = false;
+
+//+------------------------------------------------------------------+
+//| True if a HIGH-importance economic event for 'currency' falls    |
+//| within +/- windowMinutes of the current trade-server time.       |
+//| windowMinutes <= 0 disables the filter.                          |
+//| Fail-open: if the calendar returns no data or an error, trading  |
+//| is NOT blocked. Verify the filter in your terminal before relying|
+//| on it.                                                           |
+//+------------------------------------------------------------------+
+bool GS_NewsBlocked(const int windowMinutes, const string currency)
+{
+   if(windowMinutes <= 0)
+      return false;
+
+   datetime now    = TimeTradeServer();
+   datetime minute = now - (now % 60);
+   if(minute == g_gsNewsMinute)
+      return g_gsNewsBlocked;
+
+   bool blocked = false;
+   MqlCalendarValue values[];
+   int count = CalendarValueHistory(values, now - windowMinutes * 60, now + windowMinutes * 60, NULL, currency);
+   if(count > 0)
+   {
+      for(int i = 0; i < count; i++)
+      {
+         MqlCalendarEvent ev;
+         if(CalendarEventById(values[i].event_id, ev) && ev.importance == CALENDAR_IMPORTANCE_HIGH)
+         {
+            blocked = true;
+            break;
+         }
+      }
+   }
+
+   g_gsNewsMinute  = minute;
+   g_gsNewsBlocked = blocked;
+   return blocked;
+}
+
+//+------------------------------------------------------------------+
+//| Deletes this EA's pending stop orders (symbol + magic).          |
+//| Returns the number deleted.                                      |
+//+------------------------------------------------------------------+
+int GS_DeleteOwnPendingOrders(CTrade &tr, const string symbol, const long magic)
+{
+   int deleted = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0)
+         continue;
+      ENUM_ORDER_TYPE ot = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+      if((ot == ORDER_TYPE_BUY_STOP || ot == ORDER_TYPE_SELL_STOP)
+         && OrderGetString(ORDER_SYMBOL) == symbol && OrderGetInteger(ORDER_MAGIC) == magic)
+      {
+         if(tr.OrderDelete(ticket))
+            deleted++;
+      }
+   }
+   return deleted;
 }

@@ -10,7 +10,7 @@ Market and competitor analysis, with sources and a prioritised roadmap: [docs/ma
 | --- | --- |
 | `Golden Strategist EA_v1.mq5` | Expert Advisor, version 1. Fixed lot size (`lotSize` input, default 0.02). Wider defaults (`limitPriceGap` 200, `stopLossPips` 300). |
 | `Golden Strategist EA_v2.mq5` | Expert Advisor, version 2. Lot size hardcoded to 0.02. Wider defaults (`limitPriceGap` 400, `stopLossPips` 600) and a different session window. |
-| `GSRiskControls.mqh` | Shared safety helpers used by both EAs: magic-number filtering, spread check, daily-loss limit, entries-per-day count, risk-based lot sizing. **Keep it in the same folder as the EAs.** |
+| `GSRiskControls.mqh` | Shared safety helpers used by both EAs: magic-number filtering, spread check, daily-loss limit, entries-per-day count, news-window check, risk-based lot sizing. **Keep it in the same folder as the EAs.** |
 | `ATRStopLoss_Ind.mq5` | Custom indicator that draws ATR-based stop lines (`Up` and `Dn` buffers). Based on Rosh Jardine's ATR stop-loss indicator. Both EAs read it with `iCustom`. |
 | `atr.mq5` | Standard ATR indicator (MetaQuotes sample), included as reference. |
 | `Datetime.mqh` | Date/time helper struct (`CDateTime`), from MetaQuotes' standard library. Included as `<Datetime.mqh>` by the EAs. |
@@ -48,10 +48,12 @@ Each EA has these inputs. Defaults keep the original behaviour, except that trad
 | `InpRiskPercent` | 0 (off) | When above 0, the lot size is set so that the stop-loss distance risks this percentage of equity. If the broker's minimum lot would exceed that risk, the EA skips the trade. When 0, the fixed lot size is used (`lotSize` in v1, 0.02 in v2 unless changed). |
 | `InpMaxDailyLossPct` | 0 (off) | No new entries once equity has fallen by this percentage of day-start equity (broker server day). Open trades are **not** closed. The reference equity is reset when the EA restarts mid-day. |
 | `InpMaxEntriesPerDay` | 0 (off) | Caps new entries (filled orders) per broker server day. |
+| `InpNewsWindowMinutes` | 0 (off) | Blocks new entries within this many minutes either side of a HIGH-impact event, using MT5's built-in economic calendar. The EA also deletes its own pending stop orders when the window opens. |
+| `InpNewsCurrency` | `USD` | Currency whose high-impact events are checked. |
+
+**News filter caveats:** the calendar needs a working connection in the terminal. If it returns no data or an error, the filter does **not** block trading (it fails open). Test it in the terminal first to confirm events are detected. Prop-firm rules often use a 2-minute window, so check your firm's terms.
 
 **Upgrading from an earlier version:** positions and pending orders opened by the earlier builds used magic number 0. The new builds do not manage them. Close or manage those trades manually before you switch.
-
-**Not yet implemented:** a news filter. Prop-firm accounts often forbid new trades around high-impact news, so do not use this EA on such an account until that is added.
 
 ## Installation
 
