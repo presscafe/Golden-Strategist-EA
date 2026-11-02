@@ -2,6 +2,8 @@
 
 Experimental MetaTrader 5 Expert Advisors (MQL5) for trading gold (XAUUSD), built around an ATR-based trailing stop indicator. The code is a learning-oriented project and has **not been backtested or forward-tested in this repository**. Treat it as a starting point, not a finished trading system.
 
+Market and competitor analysis, with sources and a prioritised roadmap: [docs/market-audit.md](docs/market-audit.md).
+
 ## Repository contents
 
 | File | Role |
