@@ -60,23 +60,30 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # The MQL5 standard library (Include\Trade\...) is only created on the
-          # terminal's first start. Start it once in portable mode, wait for it,
-          # then stop it again.
+          # The MQL5 standard library (Include\Trade\...) is created on the
+          # terminal's first start, in the install folder and/or the per-user
+          # data folder under %APPDATA%\MetaQuotes\Terminal\<hash>.
+          # Start the terminal normally once, wait for Trade.mqh, then stop it.
           $mt5Dir = Split-Path $env:MT5_EDITOR
           $term   = Join-Path $mt5Dir 'terminal64.exe'
-          $trade  = Join-Path $mt5Dir 'MQL5\Include\Trade\Trade.mqh'
-          if (-not (Test-Path $trade)) {
-            Start-Process -FilePath $term -ArgumentList '/portable' | Out-Null
+          $dataRoot = Join-Path $env:APPDATA 'MetaQuotes\Terminal'
+          $found = {
+            @(Get-ChildItem -Path $mt5Dir, $dataRoot -Filter 'Trade.mqh' -Recurse -ErrorAction SilentlyContinue)
+          }
+          if (-not (& $found)) {
+            Start-Process -FilePath $term | Out-Null
             $deadline = (Get-Date).AddMinutes(10)
-            while (-not (Test-Path $trade) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 10 }
+            while (-not (& $found) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 10 }
             Start-Sleep -Seconds 30   # let the rest of the library finish copying
             Get-Process -Name 'terminal64' -ErrorAction SilentlyContinue | Stop-Process -Force
+            Start-Sleep -Seconds 5
           }
-          Write-Host "Trade.mqh present: $(Test-Path $trade)"
-          if (-not (Test-Path $trade)) {
-            Write-Output "::warning title=mql5::Trade.mqh not found under $mt5Dir"
-            Get-ChildItem -Path $env:APPDATA, $mt5Dir -Filter 'Trade.mqh' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "found: $($_.FullName)" }
+          $hits = & $found
+          Write-Host "Trade.mqh locations: $($hits.Count)"
+          $hits | ForEach-Object { Write-Host "  $($_.FullName)" }
+          if (-not $hits) {
+            Write-Output "::error title=mql5::Trade.mqh was not created by the terminal"
+            exit 1
           }
 
       - name: Compile indicator, then EAs
@@ -100,17 +107,29 @@ jobs:
           try {
             $editor = $env:MT5_EDITOR
             $mt5Dir = Split-Path $editor
-            $mql5   = Join-Path $mt5Dir 'MQL5'
             Note "editor=$editor"
-            Note "mt5Dir exists=$(Test-Path $mt5Dir) mql5 exists=$(Test-Path $mql5)"
-            Note "workspace=$(Get-Location)"
-            Note ("workspace files: " + ((Get-ChildItem -Name -Filter '*.mq*') -join ', '))
 
-            # Shared include used via <Datetime.mqh>
-            $inc = Join-Path $mql5 'Include'
-            New-Item -ItemType Directory -Force -Path $inc | Out-Null
-            Copy-Item 'Datetime.mqh' $inc -Force
-            Note "copied Datetime.mqh to $inc"
+            # Every MQL5 root MetaEditor might read: install folder and per-user data folders.
+            $mqlRoots = @()
+            $instMql = Join-Path $mt5Dir 'MQL5'
+            if (Test-Path $instMql) { $mqlRoots += $instMql }
+            $dataRoot = Join-Path $env:APPDATA 'MetaQuotes\Terminal'
+            if (Test-Path $dataRoot) {
+              $mqlRoots += @(Get-ChildItem -Path $dataRoot -Directory -ErrorAction SilentlyContinue |
+                ForEach-Object { Join-Path $_.FullName 'MQL5' } | Where-Object { Test-Path $_ })
+            }
+            Note "MQL5 roots: $($mqlRoots -join '; ')"
+            if ($mqlRoots.Count -eq 0) { throw 'No MQL5 folder found in install or data folders' }
+            $trade = @(Get-ChildItem -Path $mqlRoots -Filter 'Trade.mqh' -Recurse -ErrorAction SilentlyContinue)
+            Note "Trade.mqh under MQL5 roots: $($trade.Count) ($(($trade | ForEach-Object { $_.FullName }) -join '; '))"
+
+            # Shared include used via <Datetime.mqh>, copied to every root
+            foreach ($root in $mqlRoots) {
+              $inc = Join-Path $root 'Include'
+              New-Item -ItemType Directory -Force -Path $inc | Out-Null
+              Copy-Item 'Datetime.mqh' $inc -Force
+            }
+            Note "copied Datetime.mqh to $($mqlRoots.Count) MQL5 root(s)"
 
             function Invoke-Compile([string]$relSrc) {
               $src  = (Resolve-Path $relSrc).Path
@@ -138,12 +157,14 @@ jobs:
               return [IO.Path]::ChangeExtension($src, '.ex5')
             }
 
-            # 1) Indicator first: the EAs embed it with #resource "\ATRStopLoss_Ind.ex5"
+            # 1) Indicator first: the EAs embed it with #resource "\\ATRStopLoss_Ind.ex5"
             $ind = Invoke-Compile 'ATRStopLoss_Ind.mq5'
-            $indDir = Join-Path $mql5 'Indicators'
-            New-Item -ItemType Directory -Force -Path $indDir | Out-Null
-            Copy-Item $ind $indDir -Force
-            Copy-Item $ind (Join-Path $mql5 'ATRStopLoss_Ind.ex5') -Force
+            foreach ($root in $mqlRoots) {
+              $indDir = Join-Path $root 'Indicators'
+              New-Item -ItemType Directory -Force -Path $indDir | Out-Null
+              Copy-Item $ind $indDir -Force
+              Copy-Item $ind (Join-Path $root 'ATRStopLoss_Ind.ex5') -Force
+            }
 
             # 2) Expert Advisors
             $built = @()
